@@ -56,7 +56,11 @@ char* token_to_string(token_type c) {
 typedef enum {
 	epsilon = 100,
 	NT_List,
-	NT_Expr
+	NT_Expr,
+    NT_RExpr,
+    NT_Term,
+    NT_RTerm,
+    NT_Factor
 	//WRITEME: add symbolic names for you non-terminals here
 } nonterm_type;
 
@@ -71,6 +75,11 @@ char* nonterm_to_string(nonterm_type nt)
 	switch( nt ) {
 		  case epsilon: strncpy(buffer,"e",MAX_SYMBOL_NAME_SIZE); break;
 		  case NT_List: strncpy(buffer,"List",MAX_SYMBOL_NAME_SIZE); break;
+		  case NT_Expr: strncpy(buffer,"Expr",MAX_SYMBOL_NAME_SIZE); break;
+		  case NT_RExpr: strncpy(buffer,"RExpr",MAX_SYMBOL_NAME_SIZE); break;
+		  case NT_Term: strncpy(buffer,"Term",MAX_SYMBOL_NAME_SIZE); break;
+		  case NT_RTerm: strncpy(buffer,"RTerm",MAX_SYMBOL_NAME_SIZE); break;
+		  case NT_Factor: strncpy(buffer,"Factor",MAX_SYMBOL_NAME_SIZE); break;
 		  //WRITEME: add the other nonterminals you need here		
 		  default: strncpy(buffer,"unknown_nonterm",MAX_SYMBOL_NAME_SIZE); break;
 		}
@@ -393,7 +402,6 @@ char* parsetree_t::stuple_to_string(const stuple& s)
 	return buffer;
 }
 
-
 /*** Parser Class ***********************************************/
 
 //the parser_t class handles everything.  It has and instance of scanner_t
@@ -410,13 +418,17 @@ class parser_t {
 	void syntax_error(nonterm_type);
 
 	void List();
+    void Expr();
+    void RExpr();
+    void Term();
+    void RTerm();
+    void Factor();
 	//WRITEME: fill this out with the rest of the 
 	//recursive decent stuff (more methods)
 
   public:	
 	void parse();
 };
-
 
 //this function not only eats the token (moving the scanner forward one
 //token), it also makes sure that token is drawn in the parse tree 
@@ -457,34 +469,152 @@ void parser_t::parse()
 //so you can see the basics of how to structure your recursive 
 //decent code.
 
-//Here is an example
-void parser_t::List()
-{
+void parser_t::List() {
+    
 	//push this non-terminal onto the parse tree.
 	//the parsetree class is just for drawing the finished
 	//parse tree, and should in should have no effect the actual
 	//parsing of the data
-	parsetree.push(NT_List);
+    parsetree.push(NT_List);
 
-	switch( scanner.next_token() ) 
-	{
-		case T_plus:
-			eat_token(T_plus);
-			List();
-			break;
+    token_type token = scanner.next_token();
+    switch(token) {
+        case T_openparen:
+            eat_token(T_openparen);
+            Expr();
+            break;
+        case T_num:
+            eat_token(T_num);
+            Expr();
+            break;
 		case T_eof:
 			parsetree.drawepsilon();
 			break;
 		default:
 			syntax_error(NT_List);
 			break;
-	}
-
+    }
 	//now that we are done with List, we can pop it from the data
 	//stucture that is tracking it for drawing the parse tree
 	parsetree.pop();
 }
 
+void parser_t::Expr() {
+    parsetree.push(NT_Expr);
+
+    token_type token = scanner.next_token();
+    switch(token) {
+        case T_openparen:
+            eat_token(T_openparen);
+            Term();
+            break;
+        case T_num:
+            eat_token(T_num);
+            Term();
+            break;
+        default:
+            syntax_error(NT_Expr);
+            break;
+    }
+    parsetree.pop();
+}
+
+void parser_t::RExpr() {
+    parsetree.push(NT_RExpr);
+
+    token_type token = scanner.next_token();
+    switch(token) {
+        case T_plus:
+            eat_token(T_plus);
+            Term();
+            break;
+        case T_minus:
+            eat_token(T_minus);
+            Term();
+            break;
+        case T_period:
+            eat_token(T_period);
+            break;
+        case T_closeparen:
+            eat_token(T_closeparen);
+            break;
+        default:
+            syntax_error(NT_RExpr);
+            break;
+    }
+    parsetree.pop();
+}
+
+void parser_t::Term() {
+    parsetree.push(NT_Term);
+
+    token_type token = scanner.next_token();
+    switch(token) {
+        case T_openparen:
+            eat_token(T_openparen);
+            Factor();
+            break;
+        case T_num:
+            eat_token(T_num);
+            Factor();
+            break;
+        default:
+            syntax_error(NT_Term);
+            break;
+    }
+    parsetree.pop();
+}
+
+void parser_t::RTerm() {
+    parsetree.push(NT_RTerm);
+
+    token_type token = scanner.next_token();
+    switch(token) {
+        case T_times:
+            eat_token(T_times);
+            Factor();
+            break;
+        case T_modulo:
+            eat_token(T_modulo);
+            Factor();
+            break;
+        case T_plus:
+            eat_token(T_plus);
+            break;
+        case T_minus:
+            eat_token(T_minus);
+            break;
+        case T_period:
+            eat_token(T_period);
+            break;
+        case T_closeparen:
+            eat_token(T_closeparen);
+            break;
+        default:
+            syntax_error(NT_RTerm);
+            break;
+    }
+    parsetree.pop();
+}
+
+void parser_t::Factor() {
+    parsetree.push(NT_Factor);
+
+    token_type token = scanner.next_token();
+    switch(token) {
+        case T_openparen:
+            eat_token(T_openparen);
+            Expr();
+            break;
+        case T_num:
+            eat_token(T_num);
+            break;
+        default:
+            syntax_error(NT_Factor);
+            break;
+    }
+    parsetree.pop();
+}
 //WRITEME: you will need to put the rest of the procedures here
 
 

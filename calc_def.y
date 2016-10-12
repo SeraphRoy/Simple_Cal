@@ -8,10 +8,9 @@
 
 %%
 
-List    : List Expr '.' {printf("parsed expresion\n");}
-	    | Expr '.' {printf("parsed expresion\n");}
+List   : Expr '.' {printf("parsed expresion\n");} List
+        | %empty
         ;
-
 Expr    : Term RExpr
         ;
 RExpr   : '+' Term RExpr
