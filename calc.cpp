@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <vector>
 #include <iostream>
 #include <stdlib.h>
 #include <assert.h>
@@ -91,6 +92,7 @@ char* nonterm_to_string(nonterm_type nt)
 class scanner_t {
   public:
 
+    string input;
 	//eats the next token and prints an error if it is not of type c
 	void eat_token(token_type c);
 
@@ -100,6 +102,7 @@ class scanner_t {
 	//return line number for errors
 	int get_line();
 
+    int getValue() {return value; }
 	//constructor - inits g_next_token
 	scanner_t();
 
@@ -107,7 +110,6 @@ class scanner_t {
   private:
 
     int lineNum;
-    string input;
     token_type nextToken;
     int nextIndex;
     bool hasPeeked;
@@ -142,12 +144,12 @@ token_type scanner_t::next_token()
     }
     
     // get rid of spaces and new lines and count the line accordingly
-    while(nextIndex < input.length() && input[nextIndex] == ' ') {
-        nextIndex ++;
+    while(nextIndex < input.length() && 
+                (input[nextIndex] == ' ' || input[nextIndex] == '\n')) {
         if(input[nextIndex] == '\n') {
-            nextIndex ++;
             lineNum ++;
         }
+        nextIndex ++;
     }
     // special case for num
     string tokenString = "";
@@ -204,7 +206,7 @@ token_type scanner_t::string_to_token(string& input) {
     if(input == ")") {
         return T_closeparen;
     }
-    if(input[0] == 0) {
+    if(input[0] == EOF) {
         return T_eof;
     }
     scan_error(input[0]);
@@ -269,7 +271,12 @@ void scanner_t::mismatch_error (token_type x)
 	exit(1);
 }
 
-
+struct Value {
+    token_type token;
+    int value;
+    Value(token_type _token, int _value) : 
+                    token(_token), value(token == T_num ? _value : -1) {}
+};
 /*** ParseTree Class **********************************************/
 
 //just dumps out the tree as a dot file.  The interface is described below
@@ -416,7 +423,8 @@ class parser_t {
 	parsetree_t parsetree;
 	void eat_token(token_type t);
 	void syntax_error(nonterm_type);
-
+    vector<Value> result;
+    
 	void List();
     void Expr();
     void RExpr();
@@ -428,8 +436,13 @@ class parser_t {
 
   public:	
 	void parse();
+    parser_t(string input);
+    vector<Value> getResult(){ return result; }
 };
 
+parser_t::parser_t(string input) {
+    scanner.input = input;
+}
 //this function not only eats the token (moving the scanner forward one
 //token), it also makes sure that token is drawn in the parse tree 
 //properly by calling push and pop.
@@ -437,6 +450,8 @@ void parser_t::eat_token(token_type t)
 {
 	parsetree.push(t);
 	scanner.eat_token(t);
+    Value v(t, scanner.getValue());
+    result.push_back(v);
 	parsetree.pop();
 }
 
@@ -480,12 +495,14 @@ void parser_t::List() {
     token_type token = scanner.next_token();
     switch(token) {
         case T_openparen:
-            eat_token(T_openparen);
             Expr();
+            eat_token(T_period);
+            List();
             break;
         case T_num:
-            eat_token(T_num);
             Expr();
+            eat_token(T_period);
+            List();
             break;
 		case T_eof:
 			parsetree.drawepsilon();
@@ -505,12 +522,12 @@ void parser_t::Expr() {
     token_type token = scanner.next_token();
     switch(token) {
         case T_openparen:
-            eat_token(T_openparen);
             Term();
+            RExpr();
             break;
         case T_num:
-            eat_token(T_num);
             Term();
+            RExpr();
             break;
         default:
             syntax_error(NT_Expr);
@@ -527,16 +544,18 @@ void parser_t::RExpr() {
         case T_plus:
             eat_token(T_plus);
             Term();
+            RExpr();
             break;
         case T_minus:
             eat_token(T_minus);
             Term();
+            RExpr();
             break;
         case T_period:
-            eat_token(T_period);
+			parsetree.drawepsilon();
             break;
         case T_closeparen:
-            eat_token(T_closeparen);
+			parsetree.drawepsilon();
             break;
         default:
             syntax_error(NT_RExpr);
@@ -551,12 +570,12 @@ void parser_t::Term() {
     token_type token = scanner.next_token();
     switch(token) {
         case T_openparen:
-            eat_token(T_openparen);
             Factor();
+            RTerm();
             break;
         case T_num:
-            eat_token(T_num);
             Factor();
+            RTerm();
             break;
         default:
             syntax_error(NT_Term);
@@ -579,16 +598,16 @@ void parser_t::RTerm() {
             Factor();
             break;
         case T_plus:
-            eat_token(T_plus);
+			parsetree.drawepsilon();
             break;
         case T_minus:
-            eat_token(T_minus);
+			parsetree.drawepsilon();
             break;
         case T_period:
-            eat_token(T_period);
+			parsetree.drawepsilon();
             break;
         case T_closeparen:
-            eat_token(T_closeparen);
+			parsetree.drawepsilon();
             break;
         default:
             syntax_error(NT_RTerm);
@@ -605,6 +624,7 @@ void parser_t::Factor() {
         case T_openparen:
             eat_token(T_openparen);
             Expr();
+            eat_token(T_closeparen);
             break;
         case T_num:
             eat_token(T_num);
@@ -623,23 +643,22 @@ void parser_t::Factor() {
 int main()
 {
     string input;
-    ifstream inFileGood, inFileBad;
-    inFileBad.open("test.bad.calc");
-    inFileGood.open("test.good.calc");
     string temp;
-    while(getline(inFileGood, temp)) {
+    while(getline(cin, temp)) {
         input += temp;
+        input += '\n';
     }
-    inFileGood.close();
-    inFileBad.close();
+    input += EOF;
     scanner_t scanner(input);
-    token_type token = scanner.next_token();
-    while(true) {
-        cout << token_to_string(token) << endl; 
-        scanner.eat_token(token);
-        token = scanner.next_token();
+    parser_t parser(input);
+    parser.parse();
+    vector<Value>result = parser.getResult();
+    for(Value v : result) {
+        cout << token_to_string(v.token);
+        if(v.token == T_num) {
+            cout << v.value;
+        }
+        cout << endl;
     }
-//	parser_t parser;
-//	parser.parse();
 	return 0;
 }

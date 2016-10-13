@@ -3,7 +3,7 @@ LEX	= flex
 CC	= gcc
 CPP	= g++
 DEFTARGET = calc_def
-FLAGS = -Wall -std=c++11 -g
+FLAGS = -std=c++11 -g
 
 all: calc_def calc 
 test_def_original:
@@ -14,7 +14,7 @@ test_def: calc_def
 	./calc_def < test.bad.calc > test.bad.defoutput
 test_parse: calc
 	./calc < test.good.calc > test.good.dot
-	./calc < test.bad.calc > test.bad.dot
+	-./calc < test.bad.calc > test.bad.dot
 	dot -Tps test.good.dot > test.good.ps
 	ps2pdf test.good.ps test.good.pdf
 
