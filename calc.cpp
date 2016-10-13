@@ -87,6 +87,12 @@ char* nonterm_to_string(nonterm_type nt)
 	return buffer;
 }
 
+struct Value {
+    token_type token;
+    int value;
+    Value(token_type _token, int _value) : 
+                    token(_token), value(token == T_num ? _value : -1) {}
+};
 /*** Scanner Class ***********************************************/
 
 class scanner_t {
@@ -94,15 +100,15 @@ class scanner_t {
 
     string input;
 	//eats the next token and prints an error if it is not of type c
-	void eat_token(token_type c);
+	void eat_token(Value v);
 
 	//peeks at the lookahead token
-	token_type next_token();
+	Value next_token();
 
 	//return line number for errors
 	int get_line();
 
-    int getValue() {return value; }
+    int getValue() { return value; }
 	//constructor - inits g_next_token
 	scanner_t();
 
@@ -133,14 +139,15 @@ class scanner_t {
     token_type string_to_token(string& input);
 };
 
-token_type scanner_t::next_token()
+Value scanner_t::next_token()
 {
 	//WRITEME: replace this bogus junk with code that will take a peek
 	//at the next token and return it to the parser.  It should _not_
 	//actually consume a token - you should be able to call next_token()
 	//multiple times without actually reading any more tokens in 
     if(hasPeeked) {
-        return nextToken;
+        Value v(nextToken, value);
+        return v;
     }
     
     // get rid of spaces and new lines and count the line accordingly
@@ -171,7 +178,8 @@ token_type scanner_t::next_token()
         nextIndex ++;
     }
     hasPeeked = true;
-    return nextToken;
+    Value v(nextToken, value);
+    return v;
 }
 
 token_type scanner_t::string_to_token(string& input) {
@@ -215,7 +223,7 @@ token_type scanner_t::string_to_token(string& input) {
     return T_period;
 }
 
-void scanner_t::eat_token(token_type c) {
+void scanner_t::eat_token(Value v) {
 	//if we are supposed to eat token c, and it does not match
 	//what we are supposed to be reading from file, then it is a 
 	//mismatch error ( call - mismatch_error(c) )
@@ -224,10 +232,10 @@ void scanner_t::eat_token(token_type c) {
     if(!hasPeeked) {
         next_token();
     }
-    if(c == nextToken) {
+    if(v.token == nextToken) {
         hasPeeked = false;
     } else {
-        mismatch_error(c);
+        mismatch_error(v.token);
     }
 }
 
@@ -266,17 +274,11 @@ void scanner_t::scan_error (char x)
 
 void scanner_t::mismatch_error (token_type x)
 {
-	printf("syntax error: found %s ",token_to_string(next_token()) );
+	printf("syntax error: found %s ",token_to_string(next_token().token) );
 	printf("expecting %s - line %d\n", token_to_string(x), get_line());
 	exit(1);
 }
 
-struct Value {
-    token_type token;
-    int value;
-    Value(token_type _token, int _value) : 
-                    token(_token), value(token == T_num ? _value : -1) {}
-};
 /*** ParseTree Class **********************************************/
 
 //just dumps out the tree as a dot file.  The interface is described below
@@ -286,7 +288,7 @@ struct Value {
 //parser, so read about the interface below.
 class parsetree_t {
   public:
-	void push(token_type t);
+	void push(Value v);
 	void push(nonterm_type nt);
 	void pop();
 	void drawepsilon();
@@ -302,6 +304,7 @@ class parsetree_t {
 		nonterm_type nt;
 		token_type t;
 		stype_t stype; 
+        int value;
 		int uniq;
 	};
 	void printedge(stuple temp); //prints edge from TOS->temp
@@ -337,11 +340,12 @@ void parsetree_t::push(nonterm_type nt)
 }
 
 //same as above, but for terminals
-void parsetree_t::push(token_type t)
+void parsetree_t::push(Value v)
 {
 	counter ++;
 	stuple temp;
-	temp.t = t;
+	temp.t = v.token;
+    temp.value = v.value;
 	temp.stype = TERMINAL;
 	temp.uniq = counter;
 	printedge( temp );
@@ -421,7 +425,7 @@ class parser_t {
   private:
 	scanner_t scanner;
 	parsetree_t parsetree;
-	void eat_token(token_type t);
+	void eat_token(Value v);
 	void syntax_error(nonterm_type);
     vector<Value> result;
     
@@ -446,12 +450,10 @@ parser_t::parser_t(string input) {
 //this function not only eats the token (moving the scanner forward one
 //token), it also makes sure that token is drawn in the parse tree 
 //properly by calling push and pop.
-void parser_t::eat_token(token_type t)
+void parser_t::eat_token(Value v)
 {
-	parsetree.push(t);
-	scanner.eat_token(t);
-    Value v(t, scanner.getValue());
-    result.push_back(v);
+	parsetree.push(v);
+	scanner.eat_token(v);
 	parsetree.pop();
 }
 
@@ -462,7 +464,7 @@ void parser_t::eat_token(token_type t)
 void parser_t::syntax_error(nonterm_type nt)
 {
 	printf("syntax error: found %s in parsing %s - line %d\n",
-		token_to_string( scanner.next_token()),
+		token_to_string( scanner.next_token().token),
 		nonterm_to_string(nt),
 		scanner.get_line() ); 
 	exit(1); 
@@ -492,16 +494,18 @@ void parser_t::List() {
 	//parsing of the data
     parsetree.push(NT_List);
 
-    token_type token = scanner.next_token();
+    Value v = scanner.next_token();
+    token_type token = v.token;
+    Value temp(T_period, -1);
     switch(token) {
         case T_openparen:
             Expr();
-            eat_token(T_period);
+            eat_token(temp);
             List();
             break;
         case T_num:
             Expr();
-            eat_token(T_period);
+            eat_token(temp);
             List();
             break;
 		case T_eof:
@@ -519,7 +523,7 @@ void parser_t::List() {
 void parser_t::Expr() {
     parsetree.push(NT_Expr);
 
-    token_type token = scanner.next_token();
+    token_type token = scanner.next_token().token;
     switch(token) {
         case T_openparen:
             Term();
@@ -539,15 +543,16 @@ void parser_t::Expr() {
 void parser_t::RExpr() {
     parsetree.push(NT_RExpr);
 
-    token_type token = scanner.next_token();
+    Value v = scanner.next_token();
+    token_type token = v.token;
     switch(token) {
         case T_plus:
-            eat_token(T_plus);
+            eat_token(v);
             Term();
             RExpr();
             break;
         case T_minus:
-            eat_token(T_minus);
+            eat_token(v);
             Term();
             RExpr();
             break;
@@ -567,7 +572,7 @@ void parser_t::RExpr() {
 void parser_t::Term() {
     parsetree.push(NT_Term);
 
-    token_type token = scanner.next_token();
+    token_type token = scanner.next_token().token;
     switch(token) {
         case T_openparen:
             Factor();
@@ -587,14 +592,15 @@ void parser_t::Term() {
 void parser_t::RTerm() {
     parsetree.push(NT_RTerm);
 
-    token_type token = scanner.next_token();
+    Value v = scanner.next_token();
+    token_type token = v.token;
     switch(token) {
         case T_times:
-            eat_token(T_times);
+            eat_token(v);
             Factor();
             break;
         case T_modulo:
-            eat_token(T_modulo);
+            eat_token(v);
             Factor();
             break;
         case T_plus:
@@ -619,15 +625,17 @@ void parser_t::RTerm() {
 void parser_t::Factor() {
     parsetree.push(NT_Factor);
 
-    token_type token = scanner.next_token();
+    Value v = scanner.next_token();
+    token_type token = v.token;
+    Value temp(T_closeparen, -1);
     switch(token) {
         case T_openparen:
-            eat_token(T_openparen);
+            eat_token(v);
             Expr();
-            eat_token(T_closeparen);
+            eat_token(temp);
             break;
         case T_num:
-            eat_token(T_num);
+            eat_token(v);
             break;
         default:
             syntax_error(NT_Factor);
